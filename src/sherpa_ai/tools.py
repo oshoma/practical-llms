@@ -14,6 +14,8 @@ from langchain.utilities import GoogleSerperAPIWrapper
 from langchain.vectorstores.base import VectorStoreRetriever
 from loguru import logger
 from typing_extensions import Literal
+from hugchat import hugchat
+from hugchat.login import Login
 
 import sherpa_ai.config as cfg
 
@@ -24,6 +26,7 @@ def get_tools(memory):
     # tools.append(ContextTool(memory=memory))
     tools.append(UserInputTool())
 
+
     if cfg.SERPER_API_KEY is not None:
         search_tool = SearchTool()
         tools.append(search_tool)
@@ -32,6 +35,12 @@ def get_tools(memory):
             "No SERPER_API_KEY found in environment variables, skipping SearchTool"
         )
 
+    if cfg.HUGCHAT_EMAIL is not None and cfg.HUGCHAT_PASS is not None:
+        tools.append(HugChatTool())
+    else:
+        logger.warning(
+            "No Hugchat email and pass in environment variables, skipping Hugchat tool"
+        )
     return tools
 
 
@@ -202,3 +211,24 @@ class UserInputTool(BaseTool):
 
     def _arun(self, query: str) -> str:
         raise NotImplementedError("UserInputTool does not support async run")
+
+class HugChatTool(BaseTool):
+    name = "Hugchat"
+    description = (
+        "Access the user input for the task."
+        "This tool is an alternative way to to ask clarifying questions to solve the task, using HuggingChat via the HugChat API."
+    )
+    def _run(self, query: str) -> str:
+
+        # Log in to huggingface and grant authorization to huggingchat
+        sign = Login(cfg.HUGCHAT_EMAIL, cfg.HUGCHAT_PASS)
+        session = sign.login()
+
+        # Create a ChatBot
+        chatbot = hugchat.ChatBot(session)
+
+        return chatbot.query(query,stream=cfg.HUGCHAT_MODE_STREAM_RESPONSE,web_search= cfg.HUGCHAT_MODE_WEB_SEARCH).text
+
+    def _arun(self, query: str) -> str:
+        raise NotImplementedError("HugChat does not support async run")
+
